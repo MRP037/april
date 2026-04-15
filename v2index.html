@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR Qurban App</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+body{background:#0f172a}
+
+/* Balloon animation */
+.balloons{
+  position:fixed;
+  left:0;
+  right:0;
+  bottom:-100px;
+  pointer-events:none;
+  z-index:50
+}
+.balloon{
+  position:absolute;
+  bottom:0;
+  width:20px;
+  height:26px;
+  border-radius:50% 50% 45% 45%;
+  animation:float 3s ease-in forwards
+}
+@keyframes float{
+  0%{transform:translateY(0) scale(1);opacity:1}
+  100%{transform:translateY(-110vh) scale(1.1);opacity:0}
+}
+</style>
+</head>
+
+<body class="text-white">
+
+<div id="balloons" class="balloons"></div>
+
+<div class="max-w-md mx-auto p-4 space-y-4">
+
+<!-- NAV -->
+<div class="flex gap-2">
+  <button onclick="showDash()" class="flex-1 bg-indigo-600 p-3 rounded-xl">📊</button>
+  <button onclick="showScan()" class="flex-1 bg-cyan-600 p-3 rounded-xl">📷</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboardPage" class="space-y-3">
+  <div class="bg-slate-800 p-4 rounded-xl">
+    <h2 class="font-bold">Dashboard</h2>
+  </div>
+
+  <div class="grid grid-cols-3 gap-2 text-center">
+    <div class="bg-slate-800 p-3 rounded-xl">
+      <div class="text-xs">Total</div>
+      <div id="dTotal" class="text-xl font-bold">0</div>
+    </div>
+    <div class="bg-green-700 p-3 rounded-xl">
+      <div class="text-xs">Used</div>
+      <div id="dUsed" class="text-xl font-bold">0</div>
+    </div>
+    <div class="bg-yellow-600 p-3 rounded-xl">
+      <div class="text-xs">Sisa</div>
+      <div id="dSisa" class="text-xl font-bold">0</div>
+    </div>
+  </div>
+
+  <div class="bg-slate-800 p-4 rounded-xl">
+    <h3 class="mb-2">Log</h3>
+    <ul id="dLogs" class="text-sm space-y-1"></ul>
+  </div>
+</div>
+
+<!-- SCAN -->
+<div id="scanPage" class="hidden space-y-3">
+
+  <div id="petugasBox" class="bg-slate-800 p-3 rounded-xl space-y-2">
+    <input id="petugas" placeholder="Nama Petugas" class="w-full p-2 rounded bg-slate-700" />
+    <button onclick="setPetugas()" class="w-full bg-indigo-600 p-2 rounded">Mulai</button>
+  </div>
+
+  <div id="scanArea" class="hidden space-y-2">
+    <div class="bg-slate-800 p-3 rounded-xl">
+      Petugas: <b id="petugasLabel"></b>
+    </div>
+
+    <div id="qr-reader" class="rounded-xl overflow-hidden"></div>
+
+    <div id="hasil" class="text-center text-lg font-bold">-</div>
+  </div>
+
+</div>
+
+</div>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbwQ19niLRYiDleD0ryPrYgwEoSCIcQb2q77Awr8dOa6VovFlJAUf9b6JXwp9qBdEUs6/exec"; // isi nanti jika pakai GAS
+
+let scanner;
+let PETUGAS='';
+
+function showDash(){
+  document.getElementById('dashboardPage').classList.remove('hidden');
+  document.getElementById('scanPage').classList.add('hidden');
+  loadDashboard();
+}
+
+function showScan(){
+  document.getElementById('dashboardPage').classList.add('hidden');
+  document.getElementById('scanPage').classList.remove('hidden');
+}
+
+function setPetugas(){
+  const nama = document.getElementById('petugas').value.trim();
+  if(!nama) return alert('Isi nama');
+
+  PETUGAS = nama;
+  localStorage.setItem('petugas', nama);
+
+  document.getElementById('petugasBox').classList.add('hidden');
+  document.getElementById('scanArea').classList.remove('hidden');
+  document.getElementById('petugasLabel').innerText = nama;
+
+  start();
+}
+
+window.onload = ()=>{
+  loadDashboard();
+
+  const saved = localStorage.getItem('petugas');
+  if(saved){
+    PETUGAS = saved;
+    document.getElementById('petugasBox').classList.add('hidden');
+    document.getElementById('scanArea').classList.remove('hidden');
+    document.getElementById('petugasLabel').innerText = saved;
+    start();
+  }
+}
+
+function start(){
+  scanner = new Html5Qrcode('qr-reader');
+  scanner.start(
+    { facingMode:'environment' },
+    { fps:10 },
+    txt => processScan(txt)
+  );
+}
+
+async function processScan(qr){
+  document.getElementById('hasil').innerText = '⏳ Menunggu...';
+
+  if(!API_URL){
+    document.getElementById('hasil').innerText = 'QR: ' + qr;
+    launchBalloons();
+    return;
+  }
+
+  try{
+    const res = await fetch(API_URL, {
+      method:'POST',
+      body: JSON.stringify({
+        action:'scan',
+        qr:qr,
+        petugas:PETUGAS
+      })
+    });
+
+    const data = await res.json();
+    document.getElementById('hasil').innerText = data.result;
+
+    if(data.result.includes('BERHASIL')){
+      launchBalloons();
+    }
+
+    loadDashboard();
+
+  }catch(e){
+    document.getElementById('hasil').innerText = '❌ ERROR';
+  }
+}
+
+function launchBalloons(){
+  const container = document.getElementById('balloons');
+
+  for(let i=0;i<12;i++){
+    const b=document.createElement('div');
+    b.className='balloon';
+    b.style.left=Math.random()*100+'%';
+    b.style.background=`hsl(${Math.random()*360},70%,60%)`;
+    b.style.animationDuration=(2+Math.random()*2)+'s';
+
+    container.appendChild(b);
+    setTimeout(()=>b.remove(),4000);
+  }
+}
+
+async function loadDashboard(){
+  if(!API_URL) return;
+
+  try{
+    const res = await fetch(API_URL + '?action=dashboard');
+    const data = await res.json();
+
+    document.getElementById('dTotal').innerText = data.total;
+    document.getElementById('dUsed').innerText = data.used;
+    document.getElementById('dSisa').innerText = data.sisa;
+
+    const logBox = document.getElementById('dLogs');
+    logBox.innerHTML='';
+
+    data.logs.forEach(l=>{
+      const li=document.createElement('li');
+      li.innerText = `${l.nama} - ${new Date(l.waktu).toLocaleTimeString()} - ${l.petugas}`;
+      logBox.appendChild(li);
+    });
+
+  }catch(e){
+    console.log(e);
+  }
+}
+</script>
+
+</body>
+</html>
